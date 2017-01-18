@@ -1,0 +1,2 @@
+export const AUTH0_CLIENT_ID = 'INSERT_HERE';
+export const AUTH0_CLIENT_SECRET = 'INSERT_HERE';
