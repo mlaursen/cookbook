@@ -1,0 +1,23 @@
+{
+  "parser": "babel-eslint",
+  "extends": "airbnb",
+  "env": {
+    "node": true
+  },
+  "rules": {
+    // Don't feel like wrapping every arrow in paren
+    "arrow-parens": 0,
+    "no-underscore-dangle": 0,
+    "no-param-reassign": 0,
+
+    "max-len": 0,
+
+    // Disables for express.Router()
+    "new-cap": 0,
+
+    // Don't care too much about having a line containing / * = -
+    "no-mixed-operators": 0,
+
+    "import/imports-first": 0 // don't care having imports first for jest testing
+  }
+}
