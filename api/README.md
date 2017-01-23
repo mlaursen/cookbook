@@ -13,7 +13,7 @@ Once it has been copied, make sure to update the `AUTH0_CLIENT_ID` and `AUTH0_CL
 your values. If you do not want to use auth at all, set `NO_AUTH` to any value.
 
 ## CRUD
-Since the purpose of CRUS is for single id lookups, deletes, and updates,
+Since the purpose of CRUD is for single id lookups, deletes, and updates,
 _most_ routes can use the utility funtions found in `src/utils/routes.js`.
 
 If you want the default behavior, a new route can be created with `crudify`. Example:
@@ -38,7 +38,7 @@ $ curl -iX GET 'http://localhost:3001/users/32' \
 # Update a user (if etags match)
 $ curl -iX PUT 'http://localhost:3001/users/32' \ 
   -d '{ "id": 32, "username": "fredflinstone" }' \ 
-  -H 'If-None-Match: "jfkadsklfj_jfijsd"'
+  -H 'If-Match: "jfkadsklfj_jfijsd"'
 
 # Create a user
 $ curl -iX POST 'http://localhost:3001/users' \ 
@@ -46,7 +46,7 @@ $ curl -iX POST 'http://localhost:3001/users' \
 
 # Delete a user (if etags match)
 $ curl -iX DELETE 'http://localhost:3001/users/32' \ 
-  -H 'If-None-Match: "jfkadsklfj_jfijsd"'
+  -H 'If-Match: "jfkadsklfj_jfijsd"'
 ```
 
 There are some additional paramaters for `crudify` that allow for more validation for creates and updates.

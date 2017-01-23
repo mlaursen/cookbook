@@ -68,8 +68,8 @@ export async function createTable(name, schema, constraints) {
  * @param {String} etag - An etag from the redux store.
  * @return {boolean} true if the etag in the store matches the provided if-none-match etag.
  */
-export function isValidETag(headers, etag) {
-  const { 'if-none-match': headerETag } = headers;
+export function isValidETag(headers, etag, fetch = false) {
+  const { [`if${fetch ? '-none' : ''}-match`]: headerETag } = headers;
   return etag && headerETag && etag === headerETag;
 }
 
@@ -105,7 +105,7 @@ export function retrieve(name) {
       res.status(400);
       res.send(`The only supported content type is '${CONTENT_TYPE}'.`);
       return;
-    } else if (isValidETag(headers, etag)) {
+    } else if (isValidETag(headers, etag, true)) {
       res.sendStatus(304);
       return;
     }
