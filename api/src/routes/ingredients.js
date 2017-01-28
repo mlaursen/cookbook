@@ -1,11 +1,9 @@
-import express from 'express';
 import winston from 'winston';
-import db, { createSchema } from '../db';
-import crudify, { createTable } from '../utils/routes';
+import db, { createSchema, createTable } from '../db';
+import createCRUDRoute from '../utils/routes';
 
 const SCHEMA = createSchema({ name: 'TEXT' });
 
-const ingredients = express.Router();
 createTable('Ingredient', SCHEMA)
   .then(() => Promise.all([
     db.none('insert into Ingredient(name) values (\'ground beef\')'),
@@ -29,6 +27,4 @@ createTable('Ingredient', SCHEMA)
   });
 
 
-crudify(ingredients, 'Ingredient', SCHEMA);
-
-export default ingredients;
+export default createCRUDRoute('Ingredient', SCHEMA);

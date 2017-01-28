@@ -16,10 +16,10 @@ your values. If you do not want to use auth at all, set `NO_AUTH` to any value.
 Since the purpose of CRUD is for single id lookups, deletes, and updates,
 _most_ routes can use the utility funtions found in `src/utils/routes.js`.
 
-If you want the default behavior, a new route can be created with `crudify`. Example:
+If you want the default behavior, a new route can be created with `createCRUDRoute`. Example:
 
 ```js
-app.use('/users', crudify(express.Router(), 'users', { id: 'SERIAL', username: 'TEXT' }));
+app.use('/users', createCRUDRoute('User', createSchema({ username: 'TEXT' })));
 ```
 
 You can now do the following requests:
@@ -37,11 +37,13 @@ $ curl -iX GET 'http://localhost:3001/users/32' \
 
 # Update a user (if etags match)
 $ curl -iX PUT 'http://localhost:3001/users/32' \ 
-  -d '{ "id": 32, "username": "fredflinstone" }' \ 
-  -H 'If-Match: "jfkadsklfj_jfijsd"'
+  -H 'If-Match: "jfkadsklfj_jfijsd"' \ 
+  -H 'Content-Type: application/json' \ 
+  -d '{ "id": 32, "username": "fredflinstone" }'
 
 # Create a user
 $ curl -iX POST 'http://localhost:3001/users' \ 
+  -H 'Content-Type: application/json' \ 
   -d '{ "username": "wubbawubba" }'
 
 # Delete a user (if etags match)
@@ -49,4 +51,4 @@ $ curl -iX DELETE 'http://localhost:3001/users/32' \
   -H 'If-Match: "jfkadsklfj_jfijsd"'
 ```
 
-There are some additional paramaters for `crudify` that allow for more validation for creates and updates.
+There are some additional options for `createCRUDRoute` that allow for more validation for creates and updates.

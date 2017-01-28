@@ -1,32 +1,22 @@
 import { isEmpty, pick } from 'lodash';
 import winston from 'winston';
+import express from 'express';
 
 import db from '../db';
 import {
+  createWhereClause,
   createFindByQuery,
   createFindByIdQuery,
   createInsertQuery,
-  createCreateTableQuery,
   createUpdateByIdQuery,
   createDeleteByIdQuery,
-  createTableMetadataUpdateQuery,
 } from './queries';
 import { CONTENT_TYPE, SCHEMA_OMITTED_FIELDS, SERVER_URL, MAX_RESULTS, DEFAULT_LIMIT } from '../constants';
-import store, { getETag, getCount } from '../store';
+import store from '../redux/store';
+import { getETag, getCount } from '../redux/selectors';
 import { setCount } from '../redux/counts';
-import { createETag, updateETag, deleteETag } from '../redux/etags';
+import { createETag, deleteETag } from '../redux/etags';
 
-// Create the postgres function that generates table triggers to update metadata columns
-// Should really only be used at beginning stages
-db.none(`
-create or replace function update_metadata_updated_dt()
-returns trigger as $$
-begin
-  NEW.updated_dt = now();
-  return NEW;
-end;
-$$ language 'plpgsql';
-`);
 
 /**
  * Simple utility function to make sure that the requestion content type is either undefined
@@ -36,30 +26,11 @@ $$ language 'plpgsql';
  * @return {boolean} true if the content-type header is undefined or equal to the application's
  *    allowed content-type.
  */
-function isValidContentType(headers) {
+export function isValidContentType(headers) {
   const type = headers['content-type'];
   return typeof type === 'undefined' || type === CONTENT_TYPE;
 }
 
-
-/**
- * This is a utility function that should really only be used in development
- * and the VERY early stages of this project.
- *
- * It will drop the table if it exists and then create a new one based on the given schema
- * and constraints. Once the table has been created, a trigger will be created for the table
- * that will automatically update the metadata columns.
- *
- * @param {String} name - The table's name.
- * @param {Object} schema - The table's schema.
- * @param {String=} constraints - Any additional constraints that should be added to the table.
- * @return {Object} the final query result of added the trigger to the table.
- */
-export async function createTable(name, schema, constraints) {
-  await db.none(`drop table if exists ${name}`);
-  await db.none(createCreateTableQuery(name, schema, constraints));
-  return await db.result(createTableMetadataUpdateQuery(name));
-}
 
 /**
  * Checks if the etag in the redux store matches the provided etag in the request header.
@@ -70,9 +41,51 @@ export async function createTable(name, schema, constraints) {
  */
 export function isValidETag(headers, etag, fetch = false) {
   const { [`if${fetch ? '-none' : ''}-match`]: headerETag } = headers;
-  return etag && headerETag && etag === headerETag;
+  return !!etag && !!headerETag && etag === headerETag;
 }
 
+/**
+ * Checks if the request has all the required url parameters defined.
+ *
+ * @param {Object} req - The http request object
+ * @param {String|Array.<String>} - The url parameters required
+ * @return {boolean} true if all the url parameters are defined.
+ */
+export function isValidParams(req, urlParams) {
+  const { params } = req;
+  if (Array.isArray(urlParams)) {
+    const keys = Object.keys(params);
+    return urlParams.filter(param => keys.indexOf(param) !== -1).length === urlParams.length;
+  }
+
+  return !!params[urlParams];
+}
+
+/**
+ * Does some simple validation on a GET request. It will:
+ * - Check if all the url parameters are defined on the request
+ *   - returns true sends a 400 response
+ * - Check if the content-type is valid on the request
+ *   - returns true sends a 400 response
+ * - Check if the etags match on the request.
+ *   - returns true and sends a 304 response
+ *
+ * @param {Object} req - The http request
+ * @param {Object} res - The http response
+ * @param {String|Array.<String>} urlParams - The url params required
+ * @return {boolean} true if the response has already been sent.
+ */
+export function validateGET(req, res, urlParams) {
+  if (!isValidParams(req, urlParams) || !isValidContentType(req.headers)) {
+    res.sendStatus(400);
+    return true;
+  } else if (isValidETag(req.headers, getETag(req.originalUrl), true)) {
+    res.sendStatus(304);
+    return true;
+  }
+
+  return false;
+}
 
 /**
  * Creates a route handler for reading/retrieving a single item from the database by route
@@ -88,36 +101,26 @@ export function isValidETag(headers, etag, fetch = false) {
  * @return {function} an express route handler for retrieving a single item from the database.
  */
 export function retrieve(name) {
-  const findQuery = createFindByIdQuery(3, name);
+  const findQuery = createFindByIdQuery(name, name);
 
-  return async (req, res) => {
-    const {
-      params: { id },
-      headers,
-    } = req;
-
-    let etag = getETag(id, name);
-    if (!id) {
-      res.status(400);
-      res.send('An id is required.');
-      return;
-    } else if (!isValidContentType(headers)) {
-      res.status(400);
-      res.send(`The only supported content type is '${CONTENT_TYPE}'.`);
-      return;
-    } else if (isValidETag(headers, etag, true)) {
-      res.sendStatus(304);
+  return async function handleGET(req, res) {
+    if (validateGET(req, res, 'id')) {
       return;
     }
 
-    const entity = await db.oneOrNone(findQuery, { id }).catch(err => winston.debug(err));
+    const {
+      params: { id },
+      originalUrl: route,
+    } = req;
 
+    let etag = getETag(route);
+    const entity = await db.oneOrNone(findQuery, { id }).catch(err => winston.debug(err));
     if (entity === null) {
       res.sendStatus(404);
       return;
     } else if (!etag) {
-      store.dispatch(createETag(id, name, entity));
-      etag = getETag(id, name);
+      store.dispatch(createETag(route, entity));
+      etag = getETag(route);
     }
 
     res.setHeader('Content-Type', CONTENT_TYPE);
@@ -144,7 +147,7 @@ export function retrieve(name) {
  */
 export function retrieveAll(name, limiters, fields) {
   const findAllQuery = createFindByQuery(limiters, name, fields);
-  const countQuery = `select count(*) from ${name}`;
+  const countQuery = `select count(*) from ${name}${createWhereClause(limiters)}`;
   const makeLink = (req, offset, limit) => `${SERVER_URL}${req.originalUrl}?offset=${offset}&limit=${limit}`;
 
   return async (req, res) => {
@@ -194,13 +197,42 @@ export function retrieveAll(name, limiters, fields) {
   };
 }
 
-function getFilteredFields(schema, schemaFields) {
+/**
+ * A utility function for automatically generating a list of fields for a schema
+ * if there are no defined schemaFields. It will NOT include any metadata fields
+ * and the primary key of the schema (usually ID).
+ *
+ * @param {Object} schema - The schema to generate from
+ * @param {Array.<String>=} - An optional array of fields to use.
+ * @return {Array.<String>} the list of fields to use.
+ */
+export function getFilteredFields(schema, schemaFields) {
   let fields = schemaFields;
   if (!fields || fields.length === 0) {
     fields = Object.keys(schema).filter(f => SCHEMA_OMITTED_FIELDS.indexOf(f) === -1);
   }
 
   return fields;
+}
+
+/**
+ * A simple utility function to validate a POST request.
+ *
+ * @param {Object} req - The http request
+ * @param {Object} res - The http response
+ * @param {function=} validation - An optional validation function to call on the
+ *    request body
+ * @return {boolean} true if the POST request was invalid and the response has
+ *    already been sent.
+ */
+export function validatePOST(req, res, validation) {
+  const { headers, body } = req;
+  if (!isValidContentType(headers) || isEmpty(body) || (typeof validation === 'function' && !validation(body))) {
+    res.sendStatus(400);
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -231,24 +263,11 @@ export function create(name, schema, schemaFields, validation) {
   const insertQuery = createInsertQuery(name, pick(schema, fields));
 
   return async (req, res) => {
-    const {
-      body,
-      headers,
-    } = req;
-
-    if (!isValidContentType(headers)) {
-      res.status(400);
-      res.send(`The only supported content type is '${CONTENT_TYPE}'.`);
-      return;
-    } else if (isEmpty(body)) {
-      res.status(400);
-      res.send('Data must be provided.');
-      return;
-    } else if (typeof validation === 'function' && !validation(body)) {
-      res.sendStatus(400);
+    if (validatePOST(req, res, validation)) {
       return;
     }
 
+    const { body } = req;
     const result = await db.one(insertQuery, pick(body, fields)).catch(err => winston.debug(err));
     if (!result || !result.id) {
       res.sendStatus(500);
@@ -258,6 +277,30 @@ export function create(name, schema, schemaFields, validation) {
       store.dispatch(setCount(name, 0));
     }
   };
+}
+
+/**
+ * A simple utility function to validating a PUT request.
+ *
+ * @param {Object} req - The http request
+ * @param {Object} res - The http response
+ * @param {String|Array.<String>} urlParams - The url params to verify before
+ *    doing an update.
+ * @param {function=} validation - An optional additional validation function to call
+ *    on the request body.
+ * @return {boolean} true if the response has already been sent.
+ */
+export function validatePUT(req, res, urlParams, validation) {
+  const { headers, body } = req;
+  if (!isValidParams(req, urlParams) || !isValidContentType(headers) || isEmpty(body) || (typeof validation === 'function' && !validation(body))) {
+    res.sendStatus(400);
+    return true;
+  } else if (!isValidETag(headers, getETag(req.originalUrl))) {
+    res.sendStatus(412);
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -285,27 +328,14 @@ export function create(name, schema, schemaFields, validation) {
 export function update(name, schema, schemaFields, validation) {
   const fields = getFilteredFields(schema, schemaFields);
   const updateQuery = createUpdateByIdQuery(3, pick(schema, fields), name);
-  const findQuery = createFindByIdQuery(3, name);
 
   return async (req, res) => {
-    const { body, headers, params: { id } } = req;
+    if (validatePUT(req, res, 'id', validation)) {
+      return;
+    }
 
-    if (!id) {
-      res.status(400);
-      res.send('An id is required to update an entity.');
-      return;
-    } else if (!isValidContentType(headers)) {
-      res.status(400);
-      res.send(`The only supported content type is '${CONTENT_TYPE}'.`);
-      return;
-    } else if (isEmpty(body)) {
-      res.status(400);
-      res.send('Data must be provided.');
-      return;
-    } else if (!isValidETag(headers, getETag(id, name))) {
-      res.sendStatus(412);
-      return;
-    } else if (typeof validation === 'function' && !validation(body)) {
+    const { body, params: { id }, originalUrl: route } = req;
+    if (body.id && `${body.id}` !== id) {
       res.sendStatus(400);
       return;
     }
@@ -313,12 +343,34 @@ export function update(name, schema, schemaFields, validation) {
     const result = await db.result(updateQuery, { id, ...pick(body, fields) }).catch(err => winston.debug(err));
     if (result.rowCount === 1) {
       res.sendStatus(204);
-      const entity = await db.oneOrNone(findQuery, { id }).catch(err => winston.debug(err));
-      store.dispatch(updateETag(id, name, entity));
+      store.dispatch(deleteETag(route));
     } else {
       res.sendStatus(500);
     }
   };
+}
+
+/**
+ * A simple utility function to validate a delete request and send the correct
+ * status code response if it is invalid.
+ *
+ * @param {Object} req - The http request
+ * @param {Object} res - The http response
+ * @param {String|Array.<String>} urlParams - The url params to verify before
+ *    doing a delete.
+ * @return {boolean} true if the response has already been sent.
+ */
+export function validateDELETE(req, res, urlParams) {
+  const { headers, originalUrl } = req;
+  if (!isValidParams(req, urlParams)) {
+    res.sendStatus(400);
+    return true;
+  } else if (!isValidETag(headers, getETag(originalUrl))) {
+    res.sendStatus(412);
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -343,26 +395,11 @@ export function remove(name) {
   };
 
   return async (req, res) => {
-    const {
-      params: { id },
-      headers,
-    } = req;
-
-    const etag = getETag(id, name);
-    if (!id) {
-      res.status(400);
-      res.send('An id is required to update an entity.');
-      return;
-    } else if (!etag) {
-      // Can kind of cheat here.. If our store does not have the etag defined, it has never been requested
-      // before or already is deleted
-      res.sendStatus(404);
-      return;
-    } else if (!isValidETag(headers, etag)) {
-      res.sendStatus(412);
+    if (validateDELETE(req, res, 'id')) {
       return;
     }
 
+    const { id } = req.params;
     const entity = await db.oneOrNone(findQuery, { id }).catch(handleError(res));
     if (entity === null) {
       res.sendStatus(404);
@@ -373,13 +410,19 @@ export function remove(name) {
 
     if (result.rowCount === 1) {
       res.sendStatus(200);
-      store.dispatch(deleteETag(id, name));
+      store.dispatch(deleteETag(req.originalUrl));
       store.dispatch(setCount(name, 0));
     } else {
       res.sendStatus(500);
     }
   };
 }
+
+export const GET = 'GET';
+export const POST = 'POST';
+export const PUT = 'PUT';
+export const DELETE = 'DELETE';
+export const GET_ALL = 'GET_ALL';
 
 /**
  * A utility function for updating a router to include all the basics of CRUD.
@@ -394,15 +437,46 @@ export function remove(name) {
  * @param {Object} router - An express router to update with the crud routes.
  * @param {String} name - the table name to use.
  * @param {Object} schema - The table's schema to use.
- * @param {Array.<string>=} schemaFields - an optional list of fields to only include when doing a create request.
- *    When omitted, the schema will be used and all fields except for metadata and id will be used.
- * @param {function=} createValidation - An optional validation function to call before creating an object.
- * @param {function=} updateValidation - An optional validation function to call before updating an object.
+ * @param {Object=} options - The additional options to use when creating a CRUD route.
+ * @param {String|Array.<String>=} options.methods - A single method or a list of methods that will be allowed
+ *    for this route. If this is omitted, all types will be added.
+ * @param {Array.<String>=} options.schemaFields - An optional list of fields that should be included in the
+ *    post and put requests. If this is omitted, it will be all the fields in the schema except for the primary
+ *    key and metadata fields.
+ * @param {function=} options.createValidation -An optional validation function to call before creating an object.
+ * @param {functionoptionsvalidations.updateValidation - An optional validation function to call before updating an object.
+ * @return {Object} the router object with the corresponding enabled CRUD handlers
  */
-export default function crudify(router, name, schema, schemaFields, createValidation, updateValidation) {
-  router.get('/', retrieveAll(name));
-  router.get('/:id', retrieve(name));
-  router.put('/:id', update(name, schema, schemaFields, updateValidation));
-  router.post('/', create(name, schema, schemaFields, createValidation));
-  router.delete('/:id', remove(name));
+export default function createCRUDRoute(tableName, schema, options = {}) {
+  let { methods } = options;
+  if (!methods) {
+    methods = [GET, GET_ALL, PUT, POST, DELETE];
+  } else if (!Array.isArray(methods)) {
+    methods = [methods];
+  }
+
+  const { createValidation, updateValidation, schemaFields } = options;
+
+  const router = express.Router();
+  if (methods.indexOf('GET_ALL') !== -1) {
+    router.get('/', retrieveAll(tableName));
+  }
+
+  if (methods.indexOf(GET) !== -1) {
+    router.get('/:id', retrieve(tableName));
+  }
+
+  if (methods.indexOf(POST) !== -1) {
+    router.post('/', create(tableName, schema, schemaFields, createValidation));
+  }
+
+  if (methods.indexOf(PUT) !== -1) {
+    router.put('/:id', update(tableName, schema, schemaFields, updateValidation));
+  }
+
+  if (methods.indexOf(DELETE) !== -1) {
+    router.delete('/:id', remove(tableName));
+  }
+
+  return router;
 }

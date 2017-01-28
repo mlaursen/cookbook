@@ -11,42 +11,39 @@ describe('etags', () => {
   describe('action creators', () => {
     describe('createETag', () => {
       it('should create an action to create an etag', () => {
-        const id = 3;
-        const route = 'users';
-        const entity = { id, firstName: 'Bob', lastName: 'Bobbity' };
+        const route = '/users/3';
+        const entity = { id: 3, firstName: 'Bob', lastName: 'Bobbity' };
         const expected = {
           type: CREATE_ETAG,
-          payload: { id, route, entity },
+          payload: { route, entity },
         };
 
-        expect(createETag(id, route, entity)).toEqual(expected);
+        expect(createETag(route, entity)).toEqual(expected);
       });
     });
 
     describe('updateETag', () => {
       it('should create an action to update an etag', () => {
-        const id = 1;
-        const route = 'testing';
-        const entity = { id, test: 'Tester' };
+        const route = '/testing/';
+        const entity = { id: 1, test: 'Tester' };
         const expected = {
           type: UPDATE_ETAG,
-          payload: { id, route, entity },
+          payload: { route, entity },
         };
 
-        expect(updateETag(id, route, entity)).toEqual(expected);
+        expect(updateETag(route, entity)).toEqual(expected);
       });
     });
 
     describe('deleteETag', () => {
       it('should create an action to delete an etag', () => {
-        const id = 32032;
-        const route = 'testing';
+        const route = '/testing/1';
         const expected = {
           type: DELETE_ETAG,
-          payload: { id, route },
+          payload: { route },
         };
 
-        expect(deleteETag(id, route)).toEqual(expected);
+        expect(deleteETag(route)).toEqual(expected);
       });
     });
   });
@@ -57,15 +54,14 @@ describe('etags', () => {
     });
 
     it('should be able to create an etag', () => {
-      const id = 3;
-      const entity = { id, name: 'Hello' };
+      const entity = { id: 1, name: 'Hello' };
       const action = {
         type: CREATE_ETAG,
-        payload: { id, route: 'testing', entity },
+        payload: { route: '/testing/1', entity },
       };
 
       const expected = {
-        testing: { 3: '"abcd1234"' },
+        '/testing/1': '"abcd1234"',
       };
 
       expect(reducer({}, action)).toEqual(expected);
@@ -73,75 +69,74 @@ describe('etags', () => {
 
     it('should be able to create an etag without discarding other etags', () => {
       const state = {
-        routing: { 100: '"abcd1234"' },
-        testing: { 3424: '"abcd1234"' },
+        '/testing/1': '"abcd1234"',
+        '/testing/2': '"abcd1234"',
       };
-      const id = 8039;
-      const entity = { id, name: 'Something' };
+      const entity = { id: 8039, name: 'Something' };
 
-      const action = { type: CREATE_ETAG, payload: { id, route: 'testing', entity } };
+      const action = { type: CREATE_ETAG, payload: { route: '/testing/8039', entity } };
       const expected = {
-        routing: { 100: '"abcd1234"' },
-        testing: {
-          3424: '"abcd1234"',
-          8039: '"abcd1234"',
-        },
+        '/testing/1': '"abcd1234"',
+        '/testing/2': '"abcd1234"',
+        '/testing/8039': '"abcd1234"',
       };
 
       expect(reducer(state, action)).toEqual(expected);
     });
 
     it('should be able to update an etag', () => {
-      const id = 32;
-      const state = { testing: { 32: '"existing_etag"' } };
+      const state = {
+        '/testing/32': '"existing_etag"',
+      };
       const action = {
         type: UPDATE_ETAG,
-        payload: { id, route: 'testing', entity: { id, name: 'Woop' } },
+        payload: { route: '/testing/32', entity: { id: 32, name: 'Woop' } },
       };
 
-      const expected = { testing: { 32: '"abcd1234"' } };
+      const expected = {
+        '/testing/32': '"abcd1234"',
+      };
       expect(reducer(state, action)).toEqual(expected);
     });
 
     it('should be able to update an etag without discarding other etags', () => {
       const state = {
-        routing: { 100: '"abcd1234"' },
-        testing: { 3424: '"abcd1234"', 8039: '"existing_etag"' },
+        '/testing/100': '"abcd1234"',
+        '/testing/3424': '"abcd1234"',
+        '/testing/8039': '"existing_etag"',
       };
-      const id = 8039;
-      const entity = { id, name: 'Something' };
+      const entity = { id: 8039, name: 'Something' };
 
-      const action = { type: CREATE_ETAG, payload: { id, route: 'testing', entity } };
+      const action = { type: CREATE_ETAG, payload: { route: '/testing/8039', entity } };
       const expected = {
-        routing: { 100: '"abcd1234"' },
-        testing: {
-          3424: '"abcd1234"',
-          8039: '"abcd1234"',
-        },
+        '/testing/100': '"abcd1234"',
+        '/testing/3424': '"abcd1234"',
+        '/testing/8039': '"abcd1234"',
       };
 
       expect(reducer(state, action)).toEqual(expected);
     });
 
     it('should be able to delete an etag', () => {
-      const state = { testing: { 3: '"abcd1234"' } };
-      const action = { type: DELETE_ETAG, payload: { id: 3, route: 'testing' } };
+      const state = {
+        '/testing/3': '"abcd1234"',
+      };
+      const action = { type: DELETE_ETAG, payload: { route: '/testing/3' } };
 
-      expect(reducer(state, action)).toEqual({ testing: {} });
+      expect(reducer(state, action)).toEqual({});
     });
 
     it('should be able to delete an etag without discarding other etags', () => {
       const state = {
-        routing: { 100: '"abcd1234"' },
-        testing: { 3424: '"abcd1234"', 8039: '"abcd1234"' },
+        '/testing/100': '"abcd1234"',
+        '/testing/3424': '"abcd1234"',
+        '/testing/8039': '"abcd1234"',
       };
 
-      const action = { type: DELETE_ETAG, payload: { id: 8039, route: 'testing' } };
+      const action = { type: DELETE_ETAG, payload: { route: '/testing/8039' } };
       const expected = {
-        routing: { 100: '"abcd1234"' },
-        testing: {
-          3424: '"abcd1234"',
-        },
+        '/testing/100': '"abcd1234"',
+        '/testing/3424': '"abcd1234"',
       };
 
       expect(reducer(state, action)).toEqual(expected);
