@@ -1,3 +1,4 @@
+/** @module redux/etags */
 import { omit } from 'lodash';
 import generateETag from '../utils/generateETag';
 

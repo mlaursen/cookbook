@@ -1,3 +1,4 @@
+/** @module routes/ingredients */
 import winston from 'winston';
 import db, { createSchema, createTable } from '../db';
 import createCRUDRoute from '../utils/routes';
@@ -27,4 +28,7 @@ createTable('Ingredient', SCHEMA)
   });
 
 
+/**
+ * The router for interacting with the Ingredient table.
+ */
 export default createCRUDRoute('Ingredient', SCHEMA);

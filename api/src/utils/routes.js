@@ -1,3 +1,4 @@
+/** @module utils/routes */
 import { isEmpty, pick } from 'lodash';
 import winston from 'winston';
 import express from 'express';
@@ -22,7 +23,7 @@ import { createETag, deleteETag } from '../redux/etags';
  * Simple utility function to make sure that the requestion content type is either undefined
  * or the allowed content type of this restufl api.
  *
- * @type {Object} headers - The request headers to check
+ * @param {Object} headers - The request headers to check
  * @return {boolean} true if the content-type header is undefined or equal to the application's
  *    allowed content-type.
  */
@@ -93,9 +94,14 @@ export function validateGET(req, res, urlParams) {
  * a matching `If-None-Match: "${etag}"` header, the not modified response will be sent instead.
  *
  * Example:
- *   router.get('/:id', retrieve('test'));
+ * ```js
+ * router.get('/:id', retrieve('test'));
+ * ```
  *
- *   curl -iX GET 'http://localhost:3001/test/1'
+ * ```bash
+ * $ curl -iX GET 'http://localhost:3001/test/1'
+ * $ curl -iX GET 'http://localhost:3001/test/1' -H 'If-None-Match: "some-amazing-etag"'
+ * ```
  *
  * @param {String} name - This is the route/table's name to use for getting
  * @return {function} an express route handler for retrieving a single item from the database.
@@ -134,9 +140,13 @@ export function retrieve(name) {
  * Retrieves a paginated list of entities for a table.
  *
  * Example:
- *  router.get('/', retrieveAll('test'));
+ * ```js
+ * router.get('/', retrieveAll('test'));
+ * ```
  *
- *  curl -iX GET 'http://localhost:3001/test?limit=20&offset=10'
+ * ```bash
+ * $ curl -iX GET 'http://localhost:3001/test?limit=20&offset=10'
+ * ```
  *
  * @param {String} name - the table and route name to use
  * @param {Object=} limiters - an optional map of fields with values to limit the select statement
@@ -239,13 +249,17 @@ export function validatePOST(req, res, validation) {
  * Creates a new row for the given table name and schema.
  *
  * Example:
- *   router.post('/', create('test2', SCHEMA));
+ * ```js
+ * router.post('/', create('test2', SCHEMA));
+ * ```
  *
  * This will allow a user to post to the test2 route and make sure that only data from your schema except
  * for metadata and id are submitted.
  *
  * Example 2:
- *  router.post('/', create('test', SCHEMA, ['name', 'weight'], ({ name, weight }) => name.length < 120 && isNumber(weight)));
+ * ```js
+ * router.post('/', create('test', SCHEMA, ['name', 'weight'], ({ name, weight }) => name.length < 120 && isNumber(weight)));
+ * ```
  *
  * This will allow a user to post to your test route and validate that the request included a name that waas
  * less than 120 characters and the weight is a number. If the user supplied additional fields, they will not
@@ -309,12 +323,20 @@ export function validatePUT(req, res, urlParams, validation) {
  * the precondition failed response will be sent and the object will not be persisted to the database.
  *
  * Example:
- *  router.put('/:id', update('test', SCHEMA));
+ * ```js
+ * router.put('/:id', update('test', SCHEMA));
+ * ```
  *
- *  curl -iX PUT 'http://localhost:3001/test/1' -H 'If-None-Match: "fjdkasfjkladsjfkldsajfkldjsa"' -d '{ "id": 1, "name": "test" }'
+ * ```bash
+ * $ curl -iX PUT 'http://localhost:3001/test/1' \
+ *     -H 'If-None-Match: "fjdkasfjkladsjfkldsajfkldjsa"' \
+ *     -d '{ "id": 1, "name": "test" }'
+ * ```
  *
  * Example 2:
- *   router.put('/:id', update('test', SCHEMA, ['name'], ({ name }) => name && name !== 'Freddy'));
+ * ```js
+ * router.put('/:id', update('test', SCHEMA, ['name'], ({ name }) => name && name !== 'Freddy'));
+ * ```
  *
  * This example will now do some extra validation to make sure that the name is truthy and the name is not Freddy.
  *
@@ -378,9 +400,13 @@ export function validateDELETE(req, res, urlParams) {
  * make sure that the user has provided the correct etags before allowing the delete to happen.
  *
  * Example:
- *   router.delete('/:id', remove('test'));
+ * ```js
+ * router.delete('/:id', remove('test'));
+ * ```
  *
- *   curl -iX DELETE 'http://localhost:3001/test/3' -H 'If-None-Match: "fdkafjkasfkdas"'
+ * ```bash
+ * $ curl -iX DELETE 'http://localhost:3001/test/3' -H 'If-None-Match: "fdkafjkasfkdas"'
+ * ```
  *
  * @param {String} name - the table name to use.
  * @return {function} a route handler for deleting objects in the database
@@ -428,11 +454,9 @@ export const GET_ALL = 'GET_ALL';
  * A utility function for updating a router to include all the basics of CRUD.
  *
  * Example:
- *   import express from 'express';
- *
- *   const myCoolRoute = express.router();
- *   crudify(myCoolRoute, 'my_cool_table', createSchema({ cool: 'TEXT', not_cool: TEXT }));
- *   export default myCoolRoute;
+ * ```js
+ * app.use('/users', createCRUDRoute('User', createSchema({ username: 'TEXT' })));
+ * ```
  *
  * @param {Object} router - An express router to update with the crud routes.
  * @param {String} name - the table name to use.
@@ -443,8 +467,8 @@ export const GET_ALL = 'GET_ALL';
  * @param {Array.<String>=} options.schemaFields - An optional list of fields that should be included in the
  *    post and put requests. If this is omitted, it will be all the fields in the schema except for the primary
  *    key and metadata fields.
- * @param {function=} options.createValidation -An optional validation function to call before creating an object.
- * @param {functionoptionsvalidations.updateValidation - An optional validation function to call before updating an object.
+ * @param {function=} options.createValidation - An optional validation function to call before creating an object.
+ * @param {function=} options.updateValidation - An optional validation function to call before updating an object.
  * @return {Object} the router object with the corresponding enabled CRUD handlers
  */
 export default function createCRUDRoute(tableName, schema, options = {}) {

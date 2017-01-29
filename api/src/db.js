@@ -1,3 +1,4 @@
+/** @module db */
 import Promise from 'bluebird';
 import pgPromise from 'pg-promise';
 import dotenv from 'dotenv';
@@ -19,8 +20,20 @@ const db = pgp({
   database: PG_DATABASE,
 });
 
+/**
+ * This is the main way to pool connections to the postgres database.
+ *
+ * @see https://github.com/vitaly-t/pg-promise
+ */
 export default db;
 
+/**
+ * Used to create a postgres table schema with the normal defaults of metadata columns
+ * and the id as a SERIAL primary key.
+ *
+ * @param {Object} schema - The additional mappings of field -> type for the table.
+ * @return {Object} a merged representation of the schema with defaults.
+ */
 export function createSchema(schema) {
   return {
     id: 'SERIAL',

@@ -1,0 +1,15 @@
+{
+  "plugins": [
+    "node_modules/jsdoc-strip-async-await",
+    "plugins/markdown"
+  ],
+  "opts": {
+    "readme": "README.md",
+    "template": "node_modules/ink-docstrap/template"
+  },
+  "templates": {
+    "systemName": "Cookbook-API",
+    "inverseNav": true,
+    "theme": "united"
+  }
+}
